@@ -3,10 +3,10 @@
 # ============================================
 
 # Import necessary standard libraries
-import os  # For environment variable access
-import time  # For latency measurement
-import logging  # For logging decisions and errors
-import requests  # For making HTTP requests to APIs
+import os  # For accessing environment variables securely
+import time  # For measuring latency
+import logging  # For logging decisions, errors, and actions
+import requests  # For making HTTP requests to external APIs
 from enum import Enum  # For creating enumerated constants
 from typing import Any, Dict, List, Literal, Optional, Protocol, Union  # For type hinting
 from dataclasses import dataclass  # For creating simple data classes
@@ -203,122 +203,6 @@ class MemoryQueryGenerator(Enum):
     # Represents a custom query generator
     custom = "custom"
 
-# Step classes to define steps involved in an agent's actions
-class StepCommon(BaseModel):
-    """
-    Common attributes for all agent action steps.
-
-    Attributes:
-        turn_id (str): The identifier of the turn this step belongs to.
-        step_id (str): The identifier for this step.
-        started_at (Optional[datetime]): The time when the step started.
-        completed_at (Optional[datetime]): The time when the step completed.
-    """
-    # Identifier for the turn that this step is part of
-    turn_id: str
-    # Unique identifier for this specific step
-    step_id: str
-    # Optional timestamp marking when the step started
-    started_at: Optional[datetime] = None
-    # Optional timestamp marking when the step completed
-    completed_at: Optional[datetime] = None
-
-# Enum to represent the types of steps in an agent's action sequence
-class StepType(Enum):
-    """
-    Enum to represent the types of steps in an agent's action sequence.
-
-    Attributes:
-        inference: Represents an inference step.
-        tool_execution: Represents a tool execution step.
-        shield_call: Represents a shield call step.
-        memory_retrieval: Represents a memory retrieval step.
-    """
-    # Represents an inference step
-    inference = "inference"
-    # Represents a tool execution step
-    tool_execution = "tool_execution"
-    # Represents a shield call step
-    shield_call = "shield_call"
-    # Represents a memory retrieval step
-    memory_retrieval = "memory_retrieval"
-
-# Unified Step class to handle different types of agent steps
-Step = Annotated[
-    Union[
-        'InferenceStep',          # Inference step type
-        'ToolExecutionStep',     # Tool execution step type
-        'ShieldCallStep',        # Shield call step type
-        'MemoryRetrievalStep',   # Memory retrieval step type
-    ],
-    Field(discriminator="step_type"),  # Use the 'step_type' field to discriminate between different step types
-]
-
-# Represents a single turn in an interaction with an agent
-@json_schema_type  # Decorator to define JSON schema type for Turn
-class Turn(BaseModel):
-    """
-    A single turn in an interaction with an Agentic System.
-
-    Attributes:
-        turn_id (str): Identifier for the turn.
-        session_id (str): Identifier for the session this turn belongs to.
-        input_messages (List[Union[UserMessage, ToolResponseMessage]]): List of input messages.
-        steps (List[Step]): List of steps involved in the turn.
-        output_message (CompletionMessage): The final output message from the turn.
-        output_attachments (List[Attachment]): List of output attachments for the turn.
-        started_at (datetime): The time when the turn started.
-        completed_at (Optional[datetime]): The time when the turn completed.
-    """
-    # Unique identifier for this turn
-    turn_id: str
-    # Identifier for the session that this turn is part of
-    session_id: str
-    # List of input messages, which can be either UserMessage or ToolResponseMessage
-    input_messages: List[
-        Union[
-            UserMessage,
-            ToolResponseMessage,
-        ]
-    ]
-    # List of steps executed during this turn
-    steps: List[Step]
-    # The final output message generated at the end of the turn
-    output_message: CompletionMessage
-    # List of attachments included in the output message, defaults to an empty list
-    output_attachments: List[Attachment] = Field(default_factory=list)
-    # Timestamp marking when the turn started
-    started_at: datetime
-    # Optional timestamp marking when the turn completed
-    completed_at: Optional[datetime] = None
-
-# Represents a session of interactions with an agent
-@json_schema_type  # Decorator to define JSON schema type for Session
-class Session(BaseModel):
-    """
-    A single session of an interaction with an Agentic System.
-
-    Attributes:
-        session_id (str): Identifier for the session.
-        session_name (str): Name of the session.
-        turns (List[Turn]): List of turns within the session.
-        started_at (datetime): The time when the session started.
-        memory_bank (Optional[MemoryBank]): Memory bank associated with the session.
-        config (AgentConfiguration): Configuration settings for the agent.
-    """
-    # Unique identifier for the session
-    session_id: str
-    # Human-readable name for the session
-    session_name: str
-    # List of turns that occurred during this session
-    turns: List[Turn]
-    # Timestamp marking when the session started
-    started_at: datetime
-    # Optional memory bank associated with this session
-    memory_bank: Optional[MemoryBank] = None
-    # Configuration settings for the agent, defaulting to manual mode
-    config: 'AgentConfiguration' = Field(default_factory='AgentConfiguration')
-
 # ============================================
 # 3. Metrics Tracking and Services
 # ============================================
@@ -326,12 +210,21 @@ class Session(BaseModel):
 # Dataclass to hold metrics for each tool
 @dataclass
 class ToolMetrics:
+    """
+    Data class to store metrics for each tool.
+
+    Attributes:
+        cost (float): Cost per request in USD.
+        latency (float): Latency in seconds.
+        quality (float): Quality score (e.g., 0 to 1).
+        co2_impact (float): CO2 impact in kg per request.
+    """
     cost: float  # Cost per request in USD
     latency: float  # Latency in seconds
     quality: float  # Quality score (e.g., 0 to 1)
     co2_impact: float  # CO2 impact in kg per request
 
-# Enhanced AgentTool Enum with additional tools
+# Enum to define different types of agent tools available (extended)
 class AgentTool(Enum):
     """
     Enum for the different tools that an agent can utilize.
@@ -355,10 +248,10 @@ class AgentTool(Enum):
     openai_gpt = "openai_gpt"
     llama = "llama"
 
-# Service to retrieve and manage metrics dynamically
+# MetricsService class to retrieve and manage tool metrics
 class MetricsService:
     """
-    Service responsible for retrieving and managing metrics for each tool.
+    Service to retrieve and manage metrics for each tool.
 
     Attributes:
         base_costs (Dict[AgentTool, float]): Base cost per request for each tool.
@@ -376,7 +269,7 @@ class MetricsService:
             AgentTool.openai_gpt: 0.03,
             AgentTool.llama: 0.025,
         }
-        # Initialize base CO2 impact for tools in kg per request
+        # Initialize base CO2 impacts for tools in kg
         self.base_co2: Dict[AgentTool, float] = {
             AgentTool.brave_search: 0.0005,
             AgentTool.wolfram_alpha: 0.0007,
@@ -390,7 +283,7 @@ class MetricsService:
 
     def get_metrics(self, tool: AgentTool) -> ToolMetrics:
         """
-        Retrieves the metrics for a given tool, dynamically measuring latency.
+        Retrieve metrics for a given tool, dynamically measuring latency.
 
         Args:
             tool (AgentTool): The tool for which to retrieve metrics.
@@ -398,55 +291,53 @@ class MetricsService:
         Returns:
             ToolMetrics: The metrics associated with the tool.
         """
-        # If the tool is OpenAI GPT, retrieve dynamic metrics
         if tool == AgentTool.openai_gpt:
             return self.get_openai_metrics()
-        # If the tool is Llama, retrieve dynamic metrics
         elif tool == AgentTool.llama:
             return self.get_llama_metrics()
         else:
-            # For other tools, return static metrics
+            # Return static metrics for other tools
             return ToolMetrics(
-                cost=self.base_costs.get(tool, float('inf')),  # Default to infinity if not found
-                latency=0.5,  # Static latency
-                quality=0.8,  # Static quality score
-                co2_impact=self.base_co2.get(tool, float('inf'))  # Default to infinity if not found
+                cost=self.base_costs.get(tool, float('inf')),
+                latency=0.5,  # Placeholder latency
+                quality=0.8,  # Placeholder quality
+                co2_impact=self.base_co2.get(tool, float('inf'))
             )
 
     def get_openai_metrics(self) -> ToolMetrics:
         """
-        Dynamically retrieves metrics for the OpenAI GPT tool.
+        Dynamically retrieve metrics for the OpenAI GPT tool.
 
         Returns:
             ToolMetrics: The dynamically measured metrics for OpenAI GPT.
         """
         start_time = time.time()  # Record the start time for latency measurement
         try:
-            # Make a lightweight request to OpenAI to measure latency
+            # Make a lightweight request to OpenAI to measure actual latency
             response = requests.get(
-                "https://api.openai.com/v1/models",  # OpenAI API endpoint to list models
+                "https://api.openai.com/v1/models",
                 headers={
-                    "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"  # Authorization header with API key from environment
+                    "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"
                 },
-                timeout=5  # Timeout after 5 seconds
+                timeout=5  # Set a timeout to prevent hanging
             )
             latency = time.time() - start_time  # Calculate latency
             if response.status_code == 200:
-                # If the response is successful, return the metrics
-                cost = self.base_costs[AgentTool.openai_gpt]  # Retrieve base cost
+                # Estimate cost based on a predefined base cost
+                cost = self.base_costs[AgentTool.openai_gpt]
                 quality = 0.95  # Example quality score
-                co2 = self.base_co2[AgentTool.openai_gpt]  # Retrieve base CO2 impact
+                co2 = self.base_co2[AgentTool.openai_gpt]
                 return ToolMetrics(cost=cost, latency=latency, quality=quality, co2_impact=co2)
             else:
-                # If the response status is not OK, return worst metrics
+                # Handle unexpected status codes by returning worst-case metrics
                 return ToolMetrics(cost=float('inf'), latency=latency, quality=0, co2_impact=float('inf'))
         except requests.RequestException:
-            # In case of request failure, return worst metrics
+            # In case of request failure, return worst-case metrics
             return ToolMetrics(cost=float('inf'), latency=float('inf'), quality=0, co2_impact=float('inf'))
 
     def get_llama_metrics(self) -> ToolMetrics:
         """
-        Dynamically retrieves metrics for the Llama tool.
+        Dynamically retrieve metrics for the Llama tool.
 
         Returns:
             ToolMetrics: The dynamically measured metrics for Llama.
@@ -455,36 +346,37 @@ class MetricsService:
         try:
             # Hypothetical Llama API endpoint to check status or measure latency
             response = requests.get(
-                "https://api.llama.ai/v1/status",  # Llama API endpoint to check status
+                "https://api.llama.ai/v1/status",
                 headers={
-                    "Authorization": f"Bearer {os.getenv('LLAMA_API_KEY')}"  # Authorization header with API key from environment
+                    "Authorization": f"Bearer {os.getenv('LLAMA_API_KEY')}"
                 },
-                timeout=5  # Timeout after 5 seconds
+                timeout=5  # Set a timeout to prevent hanging
             )
             latency = time.time() - start_time  # Calculate latency
             if response.status_code == 200:
-                # If the response is successful, return the metrics
-                cost = self.base_costs[AgentTool.llama]  # Retrieve base cost
+                # Estimate cost based on a predefined base cost
+                cost = self.base_costs[AgentTool.llama]
                 quality = 0.9  # Example quality score
-                co2 = self.base_co2[AgentTool.llama]  # Retrieve base CO2 impact
+                co2 = self.base_co2[AgentTool.llama]
                 return ToolMetrics(cost=cost, latency=latency, quality=quality, co2_impact=co2)
             else:
-                # If the response status is not OK, return worst metrics
+                # Handle unexpected status codes by returning worst-case metrics
                 return ToolMetrics(cost=float('inf'), latency=latency, quality=0, co2_impact=float('inf'))
         except requests.RequestException:
-            # In case of request failure, return worst metrics
+            # In case of request failure, return worst-case metrics
             return ToolMetrics(cost=float('inf'), latency=float('inf'), quality=0, co2_impact=float('inf'))
 
     def update_metrics(self, tool: AgentTool, metrics: ToolMetrics):
         """
-        Updates the metrics for a given tool. (Placeholder for persistence logic)
+        Update the metrics for a given tool. This can be used if metrics are dynamically changing.
 
         Args:
             tool (AgentTool): The tool for which to update metrics.
-            metrics (ToolMetrics): The new metrics to set.
+            metrics (ToolMetrics): The new metrics to assign to the tool.
         """
-        # Placeholder: Implement persistence logic if metrics can change dynamically
-        pass
+        # Update the base costs and CO2 impacts if needed
+        self.base_costs[tool] = metrics.cost
+        self.base_co2[tool] = metrics.co2_impact
 
 # ============================================
 # 4. Scalability with Plugin Architecture
@@ -496,60 +388,277 @@ class ToolPlugin(Protocol):
     Protocol that all tool plugins must adhere to.
 
     Methods:
-        execute(prompt: str) -> CompletionMessage: Executes the tool with the given prompt.
-        get_metrics() -> ToolMetrics: Retrieves the metrics for the tool.
+        execute(prompt: str) -> CompletionMessage: Execute the tool with the given prompt.
     """
     def execute(self, prompt: str) -> CompletionMessage:
         ...
 
-    def get_metrics(self) -> ToolMetrics:
-        ...
-
-# Registry to manage tool plugins dynamically
-class ToolRegistry:
+# Plugin registry to manage tool plugins dynamically
+class PluginRegistry:
     """
-    Registry to manage and retrieve tool plugins.
+    Registry to manage and retrieve tool plugins dynamically.
 
     Attributes:
-        tools (Dict[AgentTool, ToolPlugin]): Dictionary mapping AgentTool enums to their plugins.
+        _plugins (Dict[AgentTool, ToolPlugin]): Mapping from AgentTool to their respective plugins.
     """
     def __init__(self):
-        # Initialize an empty dictionary to hold tool plugins
-        self.tools: Dict[AgentTool, ToolPlugin] = {}
+        # Initialize an empty dictionary to hold plugins
+        self._plugins: Dict[AgentTool, ToolPlugin] = {}
 
-    def register_tool(self, tool: AgentTool, plugin: ToolPlugin):
+    def register_plugin(self, tool: AgentTool, plugin: ToolPlugin):
         """
-        Registers a new tool plugin.
+        Register a new tool plugin.
 
         Args:
-            tool (AgentTool): The tool enum to register.
-            plugin (ToolPlugin): The plugin instance implementing the ToolPlugin protocol.
+            tool (AgentTool): The tool to register.
+            plugin (ToolPlugin): The plugin instance associated with the tool.
         """
-        # Add the tool and its plugin to the registry
-        self.tools[tool] = plugin
+        self._plugins[tool] = plugin
 
-    def get_tool(self, tool: AgentTool) -> ToolPlugin:
+    def get_plugin(self, tool: AgentTool) -> ToolPlugin:
         """
-        Retrieves the plugin for a given tool.
+        Retrieve the plugin associated with a given tool.
 
         Args:
-            tool (AgentTool): The tool enum to retrieve.
+            tool (AgentTool): The tool for which to retrieve the plugin.
 
         Returns:
-            ToolPlugin: The corresponding tool plugin.
+            ToolPlugin: The plugin associated with the tool.
 
         Raises:
             ValueError: If the tool is not registered.
         """
-        # Retrieve the tool plugin from the registry
-        if tool in self.tools:
-            return self.tools[tool]
+        if tool in self._plugins:
+            return self._plugins[tool]
         else:
-            # Raise an error if the tool is not found
-            raise ValueError(f"Tool {tool.value} is not registered in the ToolRegistry.")
+            raise ValueError(f"Plugin for tool '{tool.value}' is not registered.")
 
 # ============================================
 # 5. Tool Clients (OpenAI and Llama)
 # ============================================
 
-# OpenAI Client implementing the Tool
+# OpenAIClient class to interact with OpenAI APIs
+class OpenAIClient:
+    """
+    Client to interact with OpenAI APIs.
+
+    Attributes:
+        api_key (str): API key for authenticating with OpenAI.
+        model (str): The OpenAI model to use (e.g., 'davinci').
+    """
+    def __init__(self, api_key: str, model: str = "davinci"):
+        """
+        Initialize the OpenAIClient with the given API key and model.
+
+        Args:
+            api_key (str): API key for OpenAI.
+            model (str, optional): The OpenAI model to use. Defaults to "davinci".
+        """
+        self.api_key = api_key  # Store the API key
+        self.model = model  # Store the model name
+
+    def execute(self, prompt: str) -> CompletionMessage:
+        """
+        Execute a prompt using the OpenAI API and return the completion message.
+
+        Args:
+            prompt (str): The prompt to send to the OpenAI model.
+
+        Returns:
+            CompletionMessage: The response from the OpenAI model.
+
+        Raises:
+            requests.RequestException: If the API request fails.
+        """
+        # Define the endpoint URL for OpenAI completions
+        url = "https://api.openai.com/v1/completions"
+        # Define the headers with the API key for authorization
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        # Define the payload with the model and prompt
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "max_tokens": 150
+        }
+        # Send the POST request to OpenAI
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        # Raise an exception if the request was unsuccessful
+        response.raise_for_status()
+        # Parse the response JSON to extract the generated text
+        generated_text = response.json()["choices"][0]["text"].strip()
+        # Return the completion message
+        return CompletionMessage(content=generated_text)
+
+# LlamaClient class to interact with Llama APIs
+class LlamaClient:
+    """
+    Client to interact with Llama APIs.
+
+    Attributes:
+        api_key (str): API key for authenticating with Llama.
+        model (str): The Llama model to use (e.g., 'llama-2').
+    """
+    def __init__(self, api_key: str, model: str = "llama-2"):
+        """
+        Initialize the LlamaClient with the given API key and model.
+
+        Args:
+            api_key (str): API key for Llama.
+            model (str, optional): The Llama model to use. Defaults to "llama-2".
+        """
+        self.api_key = api_key  # Store the API key
+        self.model = model  # Store the model name
+
+    def execute(self, prompt: str) -> CompletionMessage:
+        """
+        Execute a prompt using the Llama API and return the completion message.
+
+        Args:
+            prompt (str): The prompt to send to the Llama model.
+
+        Returns:
+            CompletionMessage: The response from the Llama model.
+
+        Raises:
+            requests.RequestException: If the API request fails.
+        """
+        # Define the endpoint URL for Llama completions
+        url = f"https://api.llama.ai/v1/models/{self.model}/completions"
+        # Define the headers with the API key for authorization
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        # Define the payload with the prompt
+        payload = {
+            "prompt": prompt,
+            "max_tokens": 150
+        }
+        # Send the POST request to Llama
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        # Raise an exception if the request was unsuccessful
+        response.raise_for_status()
+        # Parse the response JSON to extract the generated text
+        generated_text = response.json()["choices"][0]["text"].strip()
+        # Return the completion message
+        return CompletionMessage(content=generated_text)
+
+# ============================================
+# 6. Tool Selection Logic
+# ============================================
+
+# Enum to define selection modes
+class SelectionMode(str, Enum):
+    """
+    Enum to define the selection mode for tool assignment.
+
+    Attributes:
+        manual: Developer manually selects the tool.
+        automated: The system automatically selects the best tool based on metrics.
+    """
+    manual = "manual"
+    automated = "automated"
+
+# AgentConfiguration class to manage selection mode
+class AgentConfiguration(BaseModel):
+    """
+    Configuration model to manage the tool selection mode.
+
+    Attributes:
+        selection_mode (SelectionMode): The mode of tool selection (manual or automated).
+    """
+    # The selection mode, defaulting to manual
+    selection_mode: SelectionMode = SelectionMode.manual
+
+# ToolSelector class to handle tool selection based on the current mode
+class ToolSelector:
+    """
+    Class to handle the selection of tools based on the current configuration mode.
+
+    Attributes:
+        metrics_service (MetricsService): Service to retrieve tool metrics.
+        registry (PluginRegistry): Registry to manage tool plugins.
+    """
+    def __init__(self, metrics_service: MetricsService, registry: PluginRegistry):
+        """
+        Initialize the ToolSelector with the given MetricsService and PluginRegistry.
+
+        Args:
+            metrics_service (MetricsService): Service to retrieve tool metrics.
+            registry (PluginRegistry): Registry to manage tool plugins.
+        """
+        self.metrics_service = metrics_service  # Assign the metrics service
+        self.registry = registry  # Assign the plugin registry
+
+    def select_tool_manual(self, available_tools: List[AgentTool]) -> AgentTool:
+        """
+        Allow the developer to manually select a tool by displaying metrics.
+
+        Args:
+            available_tools (List[AgentTool]): List of available tools to choose from.
+
+        Returns:
+            AgentTool: The selected tool.
+
+        Raises:
+            ValueError: If the selected tool name is invalid.
+        """
+        # Display tool metrics to the developer
+        for tool in available_tools:
+            metrics = self.metrics_service.get_metrics(tool)  # Retrieve metrics for the tool
+            print(f"Tool: {tool.value}")  # Print the tool name
+            print(f"  Cost: ${metrics.cost}")  # Print the cost
+            print(f"  Latency: {metrics.latency:.2f}s")  # Print the latency
+            print(f"  Quality: {metrics.quality}")  # Print the quality score
+            print(f"  CO2 Impact: {metrics.co2_impact}kg\n")  # Print the CO2 impact
+
+        # Prompt the developer to select a tool by typing its name
+        while True:
+            selected_tool = input("Select a tool by typing its name: ").strip().lower()
+            # Check if the input matches any available tool
+            matched_tools = [tool for tool in available_tools if tool.value == selected_tool]
+            if matched_tools:
+                return matched_tools[0]  # Return the matched tool
+            else:
+                print("Invalid tool name. Please try again.")  # Inform the developer of invalid input
+
+    def select_tool_automated(self, available_tools: List[AgentTool]) -> AgentTool:
+        """
+        Automatically select the best tool based on metrics.
+
+        Args:
+            available_tools (List[AgentTool]): List of available tools to choose from.
+
+        Returns:
+            AgentTool: The selected tool.
+        """
+        best_tool = None  # Initialize the best tool
+        best_score = float('inf')  # Initialize the best score to infinity
+
+        # Iterate through each available tool to evaluate its score
+        for tool in available_tools:
+            metrics = self.metrics_service.get_metrics(tool)  # Retrieve metrics for the tool
+            # Define a scoring function: minimize cost and CO2 impact, maximize quality
+            # Example: weighted sum where cost and CO2 are minimized and quality is maximized
+            score = metrics.cost + metrics.co2_impact - (metrics.quality * 0.5)
+            if score < best_score:
+                best_score = score  # Update the best score
+                best_tool = tool  # Update the best tool
+
+        if best_tool:
+            self.log_selection(best_tool)  # Log the selected tool
+            return best_tool  # Return the selected tool
+        else:
+            raise ValueError("No suitable tool found for automated selection.")  # Raise an error if no tool is found
+
+    def log_selection(self, tool: AgentTool):
+        """
+        Log the tool selection decision.
+
+        Args:
+            tool (AgentTool): The tool that was selected.
+        """
+        logging.info(f"Automated selection: {tool.value}")  # Log the selection at INFO level
