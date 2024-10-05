@@ -1,0 +1,453 @@
+# main.py
+
+import logging  # Import the logging module to handle logging throughout the application
+import os  # Import the os module for accessing environment variables
+from typing import List  # Import List from typing module to use for type hinting
+
+# Import required classes and functions from other modules within the project
+from models.attachments import Attachment  # Import Attachment model
+from models.tools import AgentTool  # Import AgentTool enum
+from services.agent_service import AgentService  # Import AgentService class
+from services.metrics_service import MetricsService  # Import MetricsService class
+from services.tool_selector import ToolSelector  # Import ToolSelector class
+from plugins.openai_client import OpenAIClient  # Import OpenAIClient plugin
+from plugins.llama_client import LlamaClient  # Import LlamaClient plugin
+from config.security import load_env_variables  # Import function to load environment variables
+
+def setup_logging():
+    """Configure the logging settings."""
+    logging.basicConfig(  # Set up basic logging configuration
+        level=logging.INFO,  # Set logging level to INFO
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'  # Define the log message format
+    )
+
+def main():
+    """Main function to run the Agentic System."""
+    setup_logging()  # Set up logging
+    load_env_variables()  # Load environment variables securely
+
+    # Initialize MetricsService
+    metrics_service = MetricsService()  # Create an instance of MetricsService to handle tool metrics
+
+    # Initialize ToolSelector with MetricsService
+    tool_selector = ToolSelector(metrics_service)  # Create an instance of ToolSelector with the MetricsService instance
+
+    # Initialize API Clients with API keys from environment variables
+    openai_client = OpenAIClient(api_key=os.getenv('OPENAI_API_KEY'))  # Create an instance of OpenAIClient with API key
+    llama_client = LlamaClient(api_key=os.getenv('LLAMA_API_KEY'))  # Create an instance of LlamaClient with API key
+
+    # Initialize AgentService with ToolSelector and API clients
+    agent_service = AgentService(  # Create an instance of AgentService
+        tool_selector=tool_selector,  # Pass the ToolSelector instance
+        openai_client=openai_client,  # Pass the OpenAIClient instance
+        llama_client=llama_client  # Pass the LlamaClient instance
+    )
+
+    # Define available tools
+    available_tools: List[AgentTool] = [  # Define a list of available tools for the agent
+        AgentTool.openai_gpt,  # OpenAI GPT tool
+        AgentTool.llama,  # Llama tool
+        AgentTool.brave_search,  # Brave search tool
+        AgentTool.wolfram_alpha,  # Wolfram Alpha tool
+        AgentTool.photogen,  # Photogen tool
+        AgentTool.code_interpreter,  # Code interpreter tool
+        AgentTool.function_call,  # Function calling tool
+        AgentTool.memory,  # Memory tool
+    ]
+
+    # Example prompt
+    prompt = "Explain the theory of relativity."  # Example prompt for the agent to handle
+
+    # Manual Mode
+    print("=== Manual Mode ===")  # Indicate manual mode
+    agent_service.set_selection_mode("manual")  # Set the agent service to manual tool selection mode
+    response_manual = agent_service.handle_request(prompt, available_tools)  # Handle the prompt manually
+    print("Manual Mode Response:", response_manual.content)  # Print the response content for manual mode
+
+    # Automated Mode
+    print("\n=== Automated Mode ===")  # Indicate automated mode
+    agent_service.set_selection_mode("automated")  # Set the agent service to automated tool selection mode
+    response_automated = agent_service.handle_request(prompt, available_tools)  # Handle the prompt automatically
+    print("Automated Mode Response:", response_automated.content)  # Print the response content for automated mode
+
+if __name__ == "__main__":
+    main()  # Run the main function if the script is executed directly
+
+# config/security.py
+
+import os  # Import the os module to work with environment variables
+from dotenv import load_dotenv  # Import load_dotenv to load environment variables from a .env file
+
+def load_env_variables():
+    """
+    Load environment variables from a .env file if present.
+    Ensures that API keys and other sensitive information are securely loaded.
+    """
+    load_dotenv()  # Load variables from .env into environment
+    # Validate essential environment variables
+    required_vars = ['OPENAI_API_KEY', 'LLAMA_API_KEY']  # Define the required environment variables
+    missing_vars = [var for var in required_vars if not os.getenv(var)]  # Check for missing variables
+    if missing_vars:  # Raise an error if any required variables are missing
+        raise EnvironmentError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
+# models/attachments.py
+
+from typing import Union  # Import Union for defining multiple possible types
+from pydantic import BaseModel, Field  # Import BaseModel and Field from Pydantic for data validation
+from llama_models.schema_utils import json_schema_type  # Import json_schema_type for defining schema
+from llama_models.llama3.api.datatypes import InterleavedTextMedia, URL  # Import data types from llama3 API
+
+@json_schema_type
+class Attachment(BaseModel):
+    """
+    Represents an attachment that can be part of an agent's interaction.
+
+    Attributes:
+        content (InterleavedTextMedia | URL): The content of the attachment.
+        mime_type (str): The MIME type of the attachment content.
+    """
+    content: Union[InterleavedTextMedia, URL]  # Content can be either media or a URL
+    mime_type: str  # MIME type of the content
+
+# models/tools.py
+
+from enum import Enum  # Import Enum to create enumerations
+from typing import List, Literal, Optional, Dict, Union  # Import typing utilities for type annotations
+from pydantic import BaseModel, Field  # Import BaseModel and Field from Pydantic for data validation
+from llama_models.schema_utils import json_schema_type  # Import json_schema_type for defining schema
+from llama_stack.apis.common.deployment_types import RestAPIExecutionConfig  # Import RestAPIExecutionConfig for remote execution configuration
+from llama_models.llama3.api.datatypes import ToolParamDefinition, CompletionMessage  # Import data types from llama3 API
+
+class AgentTool(Enum):
+    """
+    Enum for the different tools that an agent can utilize.
+
+    Attributes:
+        brave_search: Represents the Brave search tool.
+        wolfram_alpha: Represents the Wolfram Alpha tool.
+        photogen: Represents the Photogen tool.
+        code_interpreter: Represents a code interpreter tool.
+        function_call: Represents a function calling tool.
+        memory: Represents a memory tool.
+        openai_gpt: Represents the OpenAI GPT tool.
+        llama: Represents the Llama tool.
+    """
+    brave_search = "brave_search"  # Brave search tool
+    wolfram_alpha = "wolfram_alpha"  # Wolfram Alpha tool
+    photogen = "photogen"  # Photogen tool
+    code_interpreter = "code_interpreter"  # Code interpreter tool
+    function_call = "function_call"  # Function calling tool
+    memory = "memory"  # Memory tool
+    openai_gpt = "openai_gpt"  # OpenAI GPT tool
+    llama = "llama"  # Llama tool
+
+class ToolDefinitionCommon(BaseModel):
+    """
+    Common attributes for all tool definitions.
+
+    Attributes:
+        input_shields (Optional[List[str]]): A list of input shields used for filtering input data.
+        output_shields (Optional[List[str]]): A list of output shields used for filtering output data.
+    """
+    input_shields: Optional[List[str]] = Field(default_factory=list)  # List of input shields for data filtering
+    output_shields: Optional[List[str]] = Field(default_factory=list)  # List of output shields for data filtering
+
+class SearchEngineType(Enum):
+    """
+    Enum for the different search engines available for use in the search tool.
+
+    Attributes:
+        bing: Represents the Bing search engine.
+        brave: Represents the Brave search engine.
+    """
+    bing = "bing"  # Bing search engine
+    brave = "brave"  # Brave search engine
+
+@json_schema_type
+class SearchToolDefinition(ToolDefinitionCommon):
+    """
+    Definition of the Search tool used by the agent.
+
+    Attributes:
+        type (Literal[AgentTool.brave_search.value]): Type of tool (always brave_search).
+        api_key (str): The API key for the search engine.
+        engine (SearchEngineType): The search engine to use (default is Brave).
+        remote_execution (Optional[RestAPIExecutionConfig]): Configuration for executing the tool remotely.
+    """
+    type: Literal[AgentTool.brave_search.value] = AgentTool.brave_search.value  # Tool type is always brave_search
+    api_key: str  # API key for the search engine
+    engine: SearchEngineType = SearchEngineType.brave  # Default search engine is Brave
+    remote_execution: Optional[RestAPIExecutionConfig] = None  # Optional remote execution configuration
+
+@json_schema_type
+class WolframAlphaToolDefinition(ToolDefinitionCommon):
+    """
+    Definition of the Wolfram Alpha tool used by the agent.
+
+    Attributes:
+        type (Literal[AgentTool.wolfram_alpha.value]): Type of tool (always wolfram_alpha).
+        api_key (str): The API key for Wolfram Alpha.
+        remote_execution (Optional[RestAPIExecutionConfig]): Configuration for executing the tool remotely.
+    """
+    type: Literal[AgentTool.wolfram_alpha.value] = AgentTool.wolfram_alpha.value  # Tool type is always wolfram_alpha
+    api_key: str  # API key for Wolfram Alpha
+    remote_execution: Optional[RestAPIExecutionConfig] = None  # Optional remote execution configuration
+
+@json_schema_type
+class PhotogenToolDefinition(ToolDefinitionCommon):
+    """
+    Definition of the Photogen tool used by the agent.
+
+    Attributes:
+        type (Literal[AgentTool.photogen.value]): Type of tool (always photogen).
+        remote_execution (Optional[RestAPIExecutionConfig]): Configuration for executing the tool remotely.
+    """
+    type: Literal[AgentTool.photogen.value] = AgentTool.photogen.value  # Tool type is always photogen
+    remote_execution: Optional[RestAPIExecutionConfig] = None  # Optional remote execution configuration
+
+@json_schema_type
+class CodeInterpreterToolDefinition(ToolDefinitionCommon):
+    """
+    Definition of the Code Interpreter tool used by the agent.
+
+    Attributes:
+        type (Literal[AgentTool.code_interpreter.value]): Type of tool (always code_interpreter).
+        enable_inline_code_execution (bool): Whether to enable inline code execution (default is True).
+        remote_execution (Optional[RestAPIExecutionConfig]): Configuration for executing the tool remotely.
+    """
+    type: Literal[AgentTool.code_interpreter.value] = AgentTool.code_interpreter.value  # Tool type is always code_interpreter
+    enable_inline_code_execution: bool = True  # Enable inline code execution by default
+    remote_execution: Optional[RestAPIExecutionConfig] = None  # Optional remote execution configuration
+
+@json_schema_type
+class FunctionCallToolDefinition(ToolDefinitionCommon):
+    """
+    Definition of the Function Call tool used by the agent.
+
+    Attributes:
+        type (Literal[AgentTool.function_call.value]): Type of tool (always function_call).
+        function_name (str): The name of the function to be called.
+        description (str): A description of the function.
+        parameters (Dict[str, ToolParamDefinition]): The parameters required for the function.
+        remote_execution (Optional[RestAPIExecutionConfig]): Configuration for executing the tool remotely.
+    """
+    type: Literal[AgentTool.function_call.value] = AgentTool.function_call.value  # Tool type is always function_call
+    function_name: str  # Name of the function to call
+    description: str  # Description of the function
+    parameters: Dict[str, ToolParamDefinition]  # Parameters for the function
+    remote_execution: Optional[RestAPIExecutionConfig] = None  # Optional remote execution configuration
+
+@json_schema_type
+class OpenAIToolDefinition(ToolDefinitionCommon):
+    """
+    Definition of the OpenAI GPT tool used by the agent.
+
+    Attributes:
+        type (Literal[AgentTool.openai_gpt.value]): Type of tool (always openai_gpt).
+        api_key (str): The API key for OpenAI.
+        model (str): The model to use (default is "davinci").
+        remote_execution (Optional[RestAPIExecutionConfig]): Configuration for executing the tool remotely.
+    """
+    type: Literal[AgentTool.openai_gpt.value] = AgentTool.openai_gpt.value  # Tool type is always openai_gpt
+    api_key: str  # API key for OpenAI
+    model: str = "davinci"  # Default model is "davinci"
+    remote_execution: Optional[RestAPIExecutionConfig] = None  # Optional remote execution configuration
+
+@json_schema_type
+class LlamaToolDefinition(ToolDefinitionCommon):
+    """
+    Definition of the Llama tool used by the agent.
+
+    Attributes:
+        type (Literal[AgentTool.llama.value]): Type of tool (always llama).
+        api_key (str): The API key for Llama.
+        model (str): The model to use (default is "llama-2").
+        remote_execution (Optional[RestAPIExecutionConfig]): Configuration for executing the tool remotely.
+    """
+    type: Literal[AgentTool.llama.value] = AgentTool.llama.value  # Tool type is always llama
+    api_key: str  # API key for Llama
+    model: str = "llama-2"  # Default model is "llama-2"
+    remote_execution: Optional[RestAPIExecutionConfig] = None  # Optional remote execution configuration
+
+# Union of all tool definitions for unified handling
+AgentToolDefinition = Annotated[
+    Union[
+        SearchToolDefinition,
+        WolframAlphaToolDefinition,
+        PhotogenToolDefinition,
+        CodeInterpreterToolDefinition,
+        FunctionCallToolDefinition,
+        OpenAIToolDefinition,
+        LlamaToolDefinition,
+    ],
+    Field(discriminator="type"),  # Use the "type" attribute to discriminate between tool types
+]
+
+# services/metrics_service.py
+
+import time  # Import time module to measure latency
+import logging  # Import logging module for logging
+import os  # Import os module for environment variables
+from dataclasses import dataclass  # Import dataclass to create data classes
+from typing import Dict  # Import Dict for type hinting
+import requests  # Import requests for making HTTP requests
+
+from models.tools import AgentTool  # Import AgentTool from models
+from models.memory_banks import MemoryBankType  # Import MemoryBankType from models
+from models.steps import CompletionMessage  # Import CompletionMessage from models
+
+@dataclass
+class ToolMetrics:
+    """
+    Data class to hold metrics for each tool.
+
+    Attributes:
+        cost (float): Cost per request in USD.
+        latency (float): Latency in seconds.
+        quality (float): Quality score (e.g., 0 to 1).
+        co2_impact (float): CO2 impact in kg per request.
+    """
+    cost: float  # Cost per request in USD
+    latency: float  # Latency in seconds
+    quality: float  # Quality score (e.g., 0 to 1)
+    co2_impact: float  # CO2 impact in kg per request
+
+class MetricsService:
+    """
+    Service to retrieve and manage metrics for each tool.
+
+    This service can dynamically retrieve metrics such as cost, latency, quality, and CO2 impact.
+    """
+    def __init__(self):
+        # Initialize with base costs, latencies, quality scores, and CO2 impacts for tools
+        self.base_costs: Dict[AgentTool, float] = {
+            AgentTool.openai_gpt: 0.03,  # Cost per request for OpenAI GPT
+            AgentTool.llama: 0.025,  # Cost per request for Llama
+            AgentTool.brave_search: 0.01,  # Cost per request for Brave search
+            AgentTool.wolfram_alpha: 0.02,  # Cost per request for Wolfram Alpha
+            AgentTool.photogen: 0.015,  # Cost per request for Photogen
+            AgentTool.code_interpreter: 0.025,  # Cost per request for Code Interpreter
+            AgentTool.function_call: 0.02,  # Cost per request for Function Call
+            AgentTool.memory: 0.005,  # Cost per request for Memory tool
+        }
+        self.base_co2: Dict[AgentTool, float] = {
+            AgentTool.openai_gpt: 0.0006,  # CO2 impact for OpenAI GPT
+            AgentTool.llama: 0.00055,  # CO2 impact for Llama
+            AgentTool.brave_search: 0.0005,  # CO2 impact for Brave search
+            AgentTool.wolfram_alpha: 0.0007,  # CO2 impact for Wolfram Alpha
+            AgentTool.photogen: 0.0006,  # CO2 impact for Photogen
+            AgentTool.code_interpreter: 0.001,  # CO2 impact for Code Interpreter
+            AgentTool.function_call: 0.0008,  # CO2 impact for Function Call
+            AgentTool.memory: 0.0003,  # CO2 impact for Memory tool
+        }
+        self.base_latency: Dict[AgentTool, float] = {
+            AgentTool.openai_gpt: 0.7,  # Base latency for OpenAI GPT in seconds
+            AgentTool.llama: 0.6,  # Base latency for Llama in seconds
+            AgentTool.brave_search: 0.4,  # Base latency for Brave search in seconds
+            AgentTool.wolfram_alpha: 0.5,  # Base latency for Wolfram Alpha in seconds
+            AgentTool.photogen: 0.45,  # Base latency for Photogen in seconds
+            AgentTool.code_interpreter: 0.8,  # Base latency for Code Interpreter in seconds
+            AgentTool.function_call: 0.6,  # Base latency for Function Call in seconds
+            AgentTool.memory: 0.3,  # Base latency for Memory tool in seconds
+        }
+        self.base_quality: Dict[AgentTool, float] = {
+            AgentTool.openai_gpt: 0.95,  # Quality score for OpenAI GPT
+            AgentTool.llama: 0.9,  # Quality score for Llama
+            AgentTool.brave_search: 0.85,  # Quality score for Brave search
+            AgentTool.wolfram_alpha: 0.9,  # Quality score for Wolfram Alpha
+            AgentTool.photogen: 0.88,  # Quality score for Photogen
+            AgentTool.code_interpreter: 0.93,  # Quality score for Code Interpreter
+            AgentTool.function_call: 0.9,  # Quality score for Function Call
+            AgentTool.memory: 0.85,  # Quality score for Memory tool
+        }
+        # Configure logging for the MetricsService
+        self.logger = logging.getLogger(__name__)  # Create a logger instance
+    
+    def get_metrics(self, tool: AgentTool) -> ToolMetrics:
+        """
+        Retrieve the metrics for a given tool, including dynamic latency measurement.
+
+        Args:
+            tool (AgentTool): The tool for which to retrieve metrics.
+
+        Returns:
+            ToolMetrics: The metrics associated with the tool.
+        """
+        if tool == AgentTool.openai_gpt:
+            return self.get_openai_metrics()  # Retrieve metrics for OpenAI GPT
+        elif tool == AgentTool.llama:
+            return self.get_llama_metrics()  # Retrieve metrics for Llama
+        else:
+            # Return static metrics for other tools
+            return ToolMetrics(
+                cost=self.base_costs.get(tool, float('inf')),  # Get cost for the tool, default to infinity if not found
+                latency=self.base_latency.get(tool, float('inf')),  # Get latency for the tool, default to infinity if not found
+                quality=self.base_quality.get(tool, 0),  # Get quality for the tool, default to 0 if not found
+                co2_impact=self.base_co2.get(tool, float('inf'))  # Get CO2 impact for the tool, default to infinity if not found
+            )
+    
+    def get_openai_metrics(self) -> ToolMetrics:
+        """
+        Dynamically retrieve metrics for the OpenAI GPT tool.
+
+        Returns:
+            ToolMetrics: The dynamically retrieved metrics.
+        """
+        start_time = time.time()  # Start latency measurement
+        try:
+            # Make a lightweight request to OpenAI to measure latency
+            response = requests.get(
+                "https://api.openai.com/v1/models",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"
+                },
+                timeout=5  # Timeout after 5 seconds
+            )
+            latency = time.time() - start_time  # Calculate latency
+            if response.status_code == 200:
+                # Estimate cost based on predefined logic
+                cost = self.base_costs[AgentTool.openai_gpt]  # Get cost for OpenAI GPT
+                quality = self.base_quality[AgentTool.openai_gpt]  # Get quality for OpenAI GPT
+                co2 = self.base_co2[AgentTool.openai_gpt]  # Get CO2 impact for OpenAI GPT
+                return ToolMetrics(cost=cost, latency=latency, quality=quality, co2_impact=co2)  # Return metrics
+            else:
+                # Log unexpected status codes and return worst metrics
+                self.logger.error(f"OpenAI API returned status code {response.status_code}")
+                return ToolMetrics(cost=float('inf'), latency=latency, quality=0, co2_impact=float('inf'))
+        except requests.RequestException as e:
+            # Log the exception and return worst metrics
+            self.logger.error(f"Error fetching OpenAI metrics: {e}")
+            return ToolMetrics(cost=float('inf'), latency=float('inf'), quality=0, co2_impact=float('inf'))
+
+    def get_llama_metrics(self) -> ToolMetrics:
+        """
+        Dynamically retrieve metrics for the Llama tool.
+
+        Returns:
+            ToolMetrics: The dynamically retrieved metrics.
+        """
+        start_time = time.time()  # Start latency measurement
+        try:
+            # Make a lightweight request to Llama's API to measure latency
+            response = requests.get(
+                "https://api.llama.ai/v1/models",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('LLAMA_API_KEY')}"
+                },
+                timeout=5  # Timeout after 5 seconds
+            )
+            latency = time.time() - start_time  # Calculate latency
+            if response.status_code == 200:
+                # Estimate cost based on predefined logic
+                cost = self.base_costs[AgentTool.llama]  # Get cost for Llama
+                quality = self.base_quality[AgentTool.llama]  # Get quality for Llama
+                co2 = self.base_co2[AgentTool.llama]  # Get CO2 impact for Llama
+                return ToolMetrics(cost=cost, latency=latency, quality=quality, co2_impact=co2)  # Return metrics
+            else:
+                # Log unexpected status codes and return worst metrics
+                self.logger.error(f"Llama API returned status code {response.status_code}")
+                return ToolMetrics(cost=float('inf'), latency=latency, quality=0, co2_impact=float('inf'))
+        except requests.RequestException as e:
+            # Log the exception and return worst metrics
+            self.logger.error(f"Error fetching Llama metrics: {e}")
+            return ToolMetrics(cost=float('inf'), latency=float('inf'), quality=0, co2_impact=float('inf'))
