@@ -1,0 +1,555 @@
+# ============================================
+# 1. Imports and Setup
+# ============================================
+
+# Import necessary standard libraries
+import os  # For environment variable access
+import time  # For latency measurement
+import logging  # For logging decisions and errors
+import requests  # For making HTTP requests to APIs
+from enum import Enum  # For creating enumerated constants
+from typing import Any, Dict, List, Literal, Optional, Protocol, Union  # For type hinting
+from dataclasses import dataclass  # For creating simple data classes
+
+# Import Pydantic for data validation and settings management
+from pydantic import BaseModel, ConfigDict, Field
+
+# Import Annotated for advanced type hinting from typing_extensions
+from typing_extensions import Annotated
+
+# Import decorators from schema_utils within llama_models
+from llama_models.schema_utils import json_schema_type, webmethod
+
+# Import all datatypes from llama3.api.datatypes, ignoring flake8 F403 warnings
+from llama_models.llama3.api.datatypes import *  # noqa: F403
+
+# Import all deployment types from llama_stack.apis.common.deployment_types, ignoring flake8 F403 warnings
+from llama_stack.apis.common.deployment_types import *  # noqa: F403
+
+# Import all inference-related classes and functions from llama_stack.apis.inference, ignoring flake8 F403 warnings
+from llama_stack.apis.inference import *  # noqa: F403
+
+# Import all safety-related classes and functions from llama_stack.apis.safety, ignoring flake8 F403 warnings
+from llama_stack.apis.safety import *  # noqa: F403
+
+# Import all memory-related classes and functions from llama_stack.apis.memory, ignoring flake8 F403 warnings
+from llama_stack.apis.memory import *  # noqa: F403
+
+# ============================================
+# 2. Data Models and Enums
+# ============================================
+
+# Attachment class representing an attachment containing content and MIME type
+@json_schema_type  # Decorator to define JSON schema type for the Attachment class
+class Attachment(BaseModel):
+    """
+    Represents an attachment that can be part of an agent's interaction.
+
+    Attributes:
+        content (InterleavedTextMedia | URL): The content of the attachment.
+        mime_type (str): The MIME type of the attachment content.
+    """
+    # The content of the attachment, which can be either InterleavedTextMedia or a URL
+    content: InterleavedTextMedia | URL
+    # The MIME type of the attachment content as a string
+    mime_type: str
+
+# Enum to define different types of agent tools available
+class AgentTool(Enum):
+    """
+    Enum for the different tools that an agent can utilize.
+
+    Attributes:
+        brave_search: Represents the Brave search tool.
+        wolfram_alpha: Represents the Wolfram Alpha tool.
+        photogen: Represents the Photogen tool.
+        code_interpreter: Represents a code interpreter tool.
+        function_call: Represents a function calling tool.
+        memory: Represents a memory tool.
+        openai_gpt: Represents the OpenAI GPT tool.
+        llama: Represents the Llama tool.
+    """
+    # Represents the Brave search tool
+    brave_search = "brave_search"
+    # Represents the Wolfram Alpha tool
+    wolfram_alpha = "wolfram_alpha"
+    # Represents the Photogen tool
+    photogen = "photogen"
+    # Represents a code interpreter tool
+    code_interpreter = "code_interpreter"
+    # Represents a function calling tool
+    function_call = "function_call"
+    # Represents a memory tool
+    memory = "memory"
+    # Represents the OpenAI GPT tool
+    openai_gpt = "openai_gpt"
+    # Represents the Llama tool
+    llama = "llama"
+
+# Tool definition with common fields
+class ToolDefinitionCommon(BaseModel):
+    """
+    Common attributes for all tool definitions.
+
+    Attributes:
+        input_shields (Optional[List[str]]): A list of input shields used for filtering input data.
+        output_shields (Optional[List[str]]): A list of output shields used for filtering output data.
+    """
+    # Optional list of input shields with a default empty list
+    input_shields: Optional[List[str]] = Field(default_factory=list)
+    # Optional list of output shields with a default empty list
+    output_shields: Optional[List[str]] = Field(default_factory=list)
+
+# Enum to represent different search engines available for use
+class SearchEngineType(Enum):
+    """
+    Enum for the different search engines available for use in the search tool.
+
+    Attributes:
+        bing: Represents the Bing search engine.
+        brave: Represents the Brave search engine.
+    """
+    # Represents the Bing search engine
+    bing = "bing"
+    # Represents the Brave search engine
+    brave = "brave"
+
+# Memory bank configurations for agents to store and retrieve memory
+class _MemoryBankConfigCommon(BaseModel):
+    """
+    Common attributes for all memory bank configurations.
+
+    Attributes:
+        bank_id (str): The identifier for the memory bank.
+    """
+    # The unique identifier for the memory bank
+    bank_id: str
+
+# Configuration for a vector-based memory bank
+class AgentVectorMemoryBankConfig(_MemoryBankConfigCommon):
+    """
+    Configuration for a vector-based memory bank.
+
+    Attributes:
+        type (Literal[MemoryBankType.vector.value]): The type of memory bank (vector).
+    """
+    # The type of memory bank, fixed to 'vector'
+    type: Literal[MemoryBankType.vector.value] = MemoryBankType.vector.value
+
+# Configuration for a key-value-based memory bank
+class AgentKeyValueMemoryBankConfig(_MemoryBankConfigCommon):
+    """
+    Configuration for a key-value-based memory bank.
+
+    Attributes:
+        type (Literal[MemoryBankType.keyvalue.value]): The type of memory bank (key-value).
+        keys (List[str]): List of keys to focus on for storing memory.
+    """
+    # The type of memory bank, fixed to 'keyvalue'
+    type: Literal[MemoryBankType.keyvalue.value] = MemoryBankType.keyvalue.value
+    # List of keys that the memory bank will focus on for storing memory
+    keys: List[str]
+
+# Configuration for a keyword-based memory bank
+class AgentKeywordMemoryBankConfig(_MemoryBankConfigCommon):
+    """
+    Configuration for a keyword-based memory bank.
+
+    Attributes:
+        type (Literal[MemoryBankType.keyword.value]): The type of memory bank (keyword).
+    """
+    # The type of memory bank, fixed to 'keyword'
+    type: Literal[MemoryBankType.keyword.value] = MemoryBankType.keyword.value
+
+# Configuration for a graph-based memory bank
+class AgentGraphMemoryBankConfig(_MemoryBankConfigCommon):
+    """
+    Configuration for a graph-based memory bank.
+
+    Attributes:
+        type (Literal[MemoryBankType.graph.value]): The type of memory bank (graph).
+        entities (List[str]): List of entities to focus on in the memory bank.
+    """
+    # The type of memory bank, fixed to 'graph'
+    type: Literal[MemoryBankType.graph.value] = MemoryBankType.graph.value
+    # List of entities that the graph-based memory bank will focus on
+    entities: List[str]
+
+# Unified MemoryBankConfig with support for multiple memory bank types
+MemoryBankConfig = Annotated[
+    Union[
+        AgentVectorMemoryBankConfig,          # Vector-based memory bank configuration
+        AgentKeyValueMemoryBankConfig,        # Key-value-based memory bank configuration
+        AgentKeywordMemoryBankConfig,         # Keyword-based memory bank configuration
+        AgentGraphMemoryBankConfig,           # Graph-based memory bank configuration
+    ],
+    Field(discriminator="type"),  # Use the 'type' field to discriminate between different configurations
+]
+
+# Memory query generators used for retrieving memory from memory banks
+class MemoryQueryGenerator(Enum):
+    """
+    Enum for different query generators used for retrieving memory from memory banks.
+
+    Attributes:
+        default: Represents the default query generator.
+        llm: Represents a query generator based on a language model.
+        custom: Represents a custom query generator.
+    """
+    # Represents the default query generator
+    default = "default"
+    # Represents a language model-based query generator
+    llm = "llm"
+    # Represents a custom query generator
+    custom = "custom"
+
+# Step classes to define steps involved in an agent's actions
+class StepCommon(BaseModel):
+    """
+    Common attributes for all agent action steps.
+
+    Attributes:
+        turn_id (str): The identifier of the turn this step belongs to.
+        step_id (str): The identifier for this step.
+        started_at (Optional[datetime]): The time when the step started.
+        completed_at (Optional[datetime]): The time when the step completed.
+    """
+    # Identifier for the turn that this step is part of
+    turn_id: str
+    # Unique identifier for this specific step
+    step_id: str
+    # Optional timestamp marking when the step started
+    started_at: Optional[datetime] = None
+    # Optional timestamp marking when the step completed
+    completed_at: Optional[datetime] = None
+
+# Enum to represent the types of steps in an agent's action sequence
+class StepType(Enum):
+    """
+    Enum to represent the types of steps in an agent's action sequence.
+
+    Attributes:
+        inference: Represents an inference step.
+        tool_execution: Represents a tool execution step.
+        shield_call: Represents a shield call step.
+        memory_retrieval: Represents a memory retrieval step.
+    """
+    # Represents an inference step
+    inference = "inference"
+    # Represents a tool execution step
+    tool_execution = "tool_execution"
+    # Represents a shield call step
+    shield_call = "shield_call"
+    # Represents a memory retrieval step
+    memory_retrieval = "memory_retrieval"
+
+# Unified Step class to handle different types of agent steps
+Step = Annotated[
+    Union[
+        'InferenceStep',          # Inference step type
+        'ToolExecutionStep',     # Tool execution step type
+        'ShieldCallStep',        # Shield call step type
+        'MemoryRetrievalStep',   # Memory retrieval step type
+    ],
+    Field(discriminator="step_type"),  # Use the 'step_type' field to discriminate between different step types
+]
+
+# Represents a single turn in an interaction with an agent
+@json_schema_type  # Decorator to define JSON schema type for Turn
+class Turn(BaseModel):
+    """
+    A single turn in an interaction with an Agentic System.
+
+    Attributes:
+        turn_id (str): Identifier for the turn.
+        session_id (str): Identifier for the session this turn belongs to.
+        input_messages (List[Union[UserMessage, ToolResponseMessage]]): List of input messages.
+        steps (List[Step]): List of steps involved in the turn.
+        output_message (CompletionMessage): The final output message from the turn.
+        output_attachments (List[Attachment]): List of output attachments for the turn.
+        started_at (datetime): The time when the turn started.
+        completed_at (Optional[datetime]): The time when the turn completed.
+    """
+    # Unique identifier for this turn
+    turn_id: str
+    # Identifier for the session that this turn is part of
+    session_id: str
+    # List of input messages, which can be either UserMessage or ToolResponseMessage
+    input_messages: List[
+        Union[
+            UserMessage,
+            ToolResponseMessage,
+        ]
+    ]
+    # List of steps executed during this turn
+    steps: List[Step]
+    # The final output message generated at the end of the turn
+    output_message: CompletionMessage
+    # List of attachments included in the output message, defaults to an empty list
+    output_attachments: List[Attachment] = Field(default_factory=list)
+    # Timestamp marking when the turn started
+    started_at: datetime
+    # Optional timestamp marking when the turn completed
+    completed_at: Optional[datetime] = None
+
+# Represents a session of interactions with an agent
+@json_schema_type  # Decorator to define JSON schema type for Session
+class Session(BaseModel):
+    """
+    A single session of an interaction with an Agentic System.
+
+    Attributes:
+        session_id (str): Identifier for the session.
+        session_name (str): Name of the session.
+        turns (List[Turn]): List of turns within the session.
+        started_at (datetime): The time when the session started.
+        memory_bank (Optional[MemoryBank]): Memory bank associated with the session.
+        config (AgentConfiguration): Configuration settings for the agent.
+    """
+    # Unique identifier for the session
+    session_id: str
+    # Human-readable name for the session
+    session_name: str
+    # List of turns that occurred during this session
+    turns: List[Turn]
+    # Timestamp marking when the session started
+    started_at: datetime
+    # Optional memory bank associated with this session
+    memory_bank: Optional[MemoryBank] = None
+    # Configuration settings for the agent, defaulting to manual mode
+    config: 'AgentConfiguration' = Field(default_factory='AgentConfiguration')
+
+# ============================================
+# 3. Metrics Tracking and Services
+# ============================================
+
+# Dataclass to hold metrics for each tool
+@dataclass
+class ToolMetrics:
+    cost: float  # Cost per request in USD
+    latency: float  # Latency in seconds
+    quality: float  # Quality score (e.g., 0 to 1)
+    co2_impact: float  # CO2 impact in kg per request
+
+# Enhanced AgentTool Enum with additional tools
+class AgentTool(Enum):
+    """
+    Enum for the different tools that an agent can utilize.
+
+    Attributes:
+        brave_search: Represents the Brave search tool.
+        wolfram_alpha: Represents the Wolfram Alpha tool.
+        photogen: Represents the Photogen tool.
+        code_interpreter: Represents a code interpreter tool.
+        function_call: Represents a function calling tool.
+        memory: Represents a memory tool.
+        openai_gpt: Represents the OpenAI GPT tool.
+        llama: Represents the Llama tool.
+    """
+    brave_search = "brave_search"
+    wolfram_alpha = "wolfram_alpha"
+    photogen = "photogen"
+    code_interpreter = "code_interpreter"
+    function_call = "function_call"
+    memory = "memory"
+    openai_gpt = "openai_gpt"
+    llama = "llama"
+
+# Service to retrieve and manage metrics dynamically
+class MetricsService:
+    """
+    Service responsible for retrieving and managing metrics for each tool.
+
+    Attributes:
+        base_costs (Dict[AgentTool, float]): Base cost per request for each tool.
+        base_co2 (Dict[AgentTool, float]): Base CO2 impact per request for each tool.
+    """
+    def __init__(self):
+        # Initialize base costs for tools in USD
+        self.base_costs: Dict[AgentTool, float] = {
+            AgentTool.brave_search: 0.01,
+            AgentTool.wolfram_alpha: 0.02,
+            AgentTool.photogen: 0.015,
+            AgentTool.code_interpreter: 0.025,
+            AgentTool.function_call: 0.02,
+            AgentTool.memory: 0.005,
+            AgentTool.openai_gpt: 0.03,
+            AgentTool.llama: 0.025,
+        }
+        # Initialize base CO2 impact for tools in kg per request
+        self.base_co2: Dict[AgentTool, float] = {
+            AgentTool.brave_search: 0.0005,
+            AgentTool.wolfram_alpha: 0.0007,
+            AgentTool.photogen: 0.0006,
+            AgentTool.code_interpreter: 0.001,
+            AgentTool.function_call: 0.0008,
+            AgentTool.memory: 0.0003,
+            AgentTool.openai_gpt: 0.0006,
+            AgentTool.llama: 0.00055,
+        }
+
+    def get_metrics(self, tool: AgentTool) -> ToolMetrics:
+        """
+        Retrieves the metrics for a given tool, dynamically measuring latency.
+
+        Args:
+            tool (AgentTool): The tool for which to retrieve metrics.
+
+        Returns:
+            ToolMetrics: The metrics associated with the tool.
+        """
+        # If the tool is OpenAI GPT, retrieve dynamic metrics
+        if tool == AgentTool.openai_gpt:
+            return self.get_openai_metrics()
+        # If the tool is Llama, retrieve dynamic metrics
+        elif tool == AgentTool.llama:
+            return self.get_llama_metrics()
+        else:
+            # For other tools, return static metrics
+            return ToolMetrics(
+                cost=self.base_costs.get(tool, float('inf')),  # Default to infinity if not found
+                latency=0.5,  # Static latency
+                quality=0.8,  # Static quality score
+                co2_impact=self.base_co2.get(tool, float('inf'))  # Default to infinity if not found
+            )
+
+    def get_openai_metrics(self) -> ToolMetrics:
+        """
+        Dynamically retrieves metrics for the OpenAI GPT tool.
+
+        Returns:
+            ToolMetrics: The dynamically measured metrics for OpenAI GPT.
+        """
+        start_time = time.time()  # Record the start time for latency measurement
+        try:
+            # Make a lightweight request to OpenAI to measure latency
+            response = requests.get(
+                "https://api.openai.com/v1/models",  # OpenAI API endpoint to list models
+                headers={
+                    "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"  # Authorization header with API key from environment
+                },
+                timeout=5  # Timeout after 5 seconds
+            )
+            latency = time.time() - start_time  # Calculate latency
+            if response.status_code == 200:
+                # If the response is successful, return the metrics
+                cost = self.base_costs[AgentTool.openai_gpt]  # Retrieve base cost
+                quality = 0.95  # Example quality score
+                co2 = self.base_co2[AgentTool.openai_gpt]  # Retrieve base CO2 impact
+                return ToolMetrics(cost=cost, latency=latency, quality=quality, co2_impact=co2)
+            else:
+                # If the response status is not OK, return worst metrics
+                return ToolMetrics(cost=float('inf'), latency=latency, quality=0, co2_impact=float('inf'))
+        except requests.RequestException:
+            # In case of request failure, return worst metrics
+            return ToolMetrics(cost=float('inf'), latency=float('inf'), quality=0, co2_impact=float('inf'))
+
+    def get_llama_metrics(self) -> ToolMetrics:
+        """
+        Dynamically retrieves metrics for the Llama tool.
+
+        Returns:
+            ToolMetrics: The dynamically measured metrics for Llama.
+        """
+        start_time = time.time()  # Record the start time for latency measurement
+        try:
+            # Hypothetical Llama API endpoint to check status or measure latency
+            response = requests.get(
+                "https://api.llama.ai/v1/status",  # Llama API endpoint to check status
+                headers={
+                    "Authorization": f"Bearer {os.getenv('LLAMA_API_KEY')}"  # Authorization header with API key from environment
+                },
+                timeout=5  # Timeout after 5 seconds
+            )
+            latency = time.time() - start_time  # Calculate latency
+            if response.status_code == 200:
+                # If the response is successful, return the metrics
+                cost = self.base_costs[AgentTool.llama]  # Retrieve base cost
+                quality = 0.9  # Example quality score
+                co2 = self.base_co2[AgentTool.llama]  # Retrieve base CO2 impact
+                return ToolMetrics(cost=cost, latency=latency, quality=quality, co2_impact=co2)
+            else:
+                # If the response status is not OK, return worst metrics
+                return ToolMetrics(cost=float('inf'), latency=latency, quality=0, co2_impact=float('inf'))
+        except requests.RequestException:
+            # In case of request failure, return worst metrics
+            return ToolMetrics(cost=float('inf'), latency=float('inf'), quality=0, co2_impact=float('inf'))
+
+    def update_metrics(self, tool: AgentTool, metrics: ToolMetrics):
+        """
+        Updates the metrics for a given tool. (Placeholder for persistence logic)
+
+        Args:
+            tool (AgentTool): The tool for which to update metrics.
+            metrics (ToolMetrics): The new metrics to set.
+        """
+        # Placeholder: Implement persistence logic if metrics can change dynamically
+        pass
+
+# ============================================
+# 4. Scalability with Plugin Architecture
+# ============================================
+
+# Protocol for tool plugins to ensure consistency
+class ToolPlugin(Protocol):
+    """
+    Protocol that all tool plugins must adhere to.
+
+    Methods:
+        execute(prompt: str) -> CompletionMessage: Executes the tool with the given prompt.
+        get_metrics() -> ToolMetrics: Retrieves the metrics for the tool.
+    """
+    def execute(self, prompt: str) -> CompletionMessage:
+        ...
+
+    def get_metrics(self) -> ToolMetrics:
+        ...
+
+# Registry to manage tool plugins dynamically
+class ToolRegistry:
+    """
+    Registry to manage and retrieve tool plugins.
+
+    Attributes:
+        tools (Dict[AgentTool, ToolPlugin]): Dictionary mapping AgentTool enums to their plugins.
+    """
+    def __init__(self):
+        # Initialize an empty dictionary to hold tool plugins
+        self.tools: Dict[AgentTool, ToolPlugin] = {}
+
+    def register_tool(self, tool: AgentTool, plugin: ToolPlugin):
+        """
+        Registers a new tool plugin.
+
+        Args:
+            tool (AgentTool): The tool enum to register.
+            plugin (ToolPlugin): The plugin instance implementing the ToolPlugin protocol.
+        """
+        # Add the tool and its plugin to the registry
+        self.tools[tool] = plugin
+
+    def get_tool(self, tool: AgentTool) -> ToolPlugin:
+        """
+        Retrieves the plugin for a given tool.
+
+        Args:
+            tool (AgentTool): The tool enum to retrieve.
+
+        Returns:
+            ToolPlugin: The corresponding tool plugin.
+
+        Raises:
+            ValueError: If the tool is not registered.
+        """
+        # Retrieve the tool plugin from the registry
+        if tool in self.tools:
+            return self.tools[tool]
+        else:
+            # Raise an error if the tool is not found
+            raise ValueError(f"Tool {tool.value} is not registered in the ToolRegistry.")
+
+# ============================================
+# 5. Tool Clients (OpenAI and Llama)
+# ============================================
+
+# OpenAI Client implementing the Tool
