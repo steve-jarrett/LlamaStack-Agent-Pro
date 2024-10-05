@@ -262,3 +262,53 @@ Python community for continuous support and development resources.
 # Error Handling
 Robust error handling is implemented across the system to gracefully manage API failures and other unexpected issues. Errors are logged appropriately to aid in debugging and system monitoring.
 
+# Sample app in compare_tools.py
+
+Explanation of the Sample Application
+Imports and Setup:
+
+Standard Libraries: For handling environment variables, logging, and HTTP requests.
+Custom Modules: Importing services, models, plugins, and configuration modules from the agentic_system package.
+Function: setup_logging:
+
+Configures the logging format and level to ensure that all important information and errors are logged appropriately.
+Function: get_available_tools:
+
+Returns a list containing the AgentTool enums for OpenAI GPT and Llama. This can be extended to include more tools as needed.
+Function: main:
+
+Step 1: Initializes logging.
+Step 2: Loads environment variables securely. If essential variables are missing, it logs an error and exits.
+Step 3: Initializes the MetricsService to handle metric retrieval.
+Step 4: Initializes the ToolSelector with the MetricsService.
+Step 5: Retrieves API keys from environment variables and initializes the respective API clients. Logs an error and exits if keys are missing.
+Step 6: Initializes the AgentService, which orchestrates tool selection and execution.
+Step 7: Defines the available tools for comparison.
+Step 8: Prompts the user to input a query. Exits if no input is provided.
+Step 9: Iterates over each available tool, executes the query, measures latency, retrieves metrics, and stores the results. Handles any exceptions during execution.
+Step 10: Displays the responses from each tool and a tabulated comparison of the metrics.
+Execution:
+
+When the script is run, it executes the main function, facilitating user interaction and displaying comparative metrics.
+
+# Running the Sample Application
+1. Ensure Environment Variables are Set
+Before running the application, ensure that your environment variables for OPENAI_API_KEY and LLAMA_API_KEY are set. You can set them in your terminal session or define them in a .env file at the root of your project.
+
+Example .env File:
+OPENAI_API_KEY=your_openai_api_key_here
+LLAMA_API_KEY=your_llama_api_key_here
+
+2. Install Dependencies
+Ensure all required Python packages are installed. If you have a requirements.txt file, you can install dependencies using:
+
+pip install -r requirements.txt
+If you don't have a requirements.txt, ensure you have the necessary packages installed:
+
+pip install pydantic requests python-dotenv
+3. Run the Sample Application
+Execute the compare_tools.py script:
+
+python compare_tools.py
+4. Follow the Prompts
+The application will prompt you to enter a query. After entering your query, it will process the request using both OpenAI GPT and Llama, then display the responses along with a comparison of the metrics.
