@@ -208,19 +208,19 @@ CO₂ Impact: Estimated carbon footprint of the request.
 Tool Selection Logic
 The ToolSelector class handles the logic for selecting the best tool based on the current mode:
 
-Manual Mode: Presents metrics to developers for manual selection.
+# Manual Mode: Presents metrics to developers for manual selection.
 Automated Mode: Uses a heuristic to select the optimal tool, prioritizing cost and CO₂ impact while maximizing quality.
 Security
 Sensitive information, such as API keys, is managed securely through environment variables. The config/security.py module ensures that essential environment variables are loaded and validated at startup.
 
-Testing
+# Testing
 Unit Tests
 Unit tests ensure that individual components function as expected. They are located in the tests/ directory and cover services like MetricsService, ToolSelector, and AgentService.
 
 Integration Tests
 Integration tests verify that different modules interact correctly. These tests simulate real-world scenarios, ensuring that tool selection and execution workflows operate seamlessly.
 
-Running Tests
+# Running Tests
 To run the tests, navigate to the project directory and execute:
 
 bash
@@ -247,16 +247,16 @@ Open a Pull Request
 
 Please ensure that your contributions adhere to the project's coding standards and include appropriate tests and documentation.
 
-License
+# License
 This project is licensed under the MIT License.
 
-Acknowledgements
+# Acknowledgements
 OpenAI for providing powerful language models.
 Llama AI for their innovative AI solutions.
 Pydantic for data validation and management.
 Requests library for simplifying HTTP requests.
 Python community for continuous support and development resources.
 
-Error Handling
+# Error Handling
 Robust error handling is implemented across the system to gracefully manage API failures and other unexpected issues. Errors are logged appropriately to aid in debugging and system monitoring.
 
