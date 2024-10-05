@@ -1,11 +1,11 @@
 # LlamaStack-Agent-Pro
 A fork of LlamaAgent to enable the management of many AI mdoels and to make tradeoffs between cost, latency, quality, and CO2 impact.
 
-Agentic System
+# Agentic System
 Overview
 The Agentic System is a flexible and scalable framework designed to manage interactions between agents and various AI tools, including Large Language Models (LLMs) like OpenAI's GPT and Llama AI, as well as other specialized AI services such as Brave Search and Wolfram Alpha. This system intelligently assigns tasks to the most suitable tool based on dynamic metrics including cost, latency, response quality, and CO₂ impact, promoting both efficiency and sustainability.
 
-Features
+# Features
 Dynamic Tool Selection: Automatically or manually select the optimal AI tool for each task based on real-time metrics.
 Scalable Plugin Architecture: Easily add new AI tools and services with minimal changes to the core system.
 Comprehensive Metrics Tracking: Monitor and evaluate cost, latency, quality, and CO₂ impact for each tool.
@@ -45,7 +45,7 @@ agentic_system/
     └── README.md
 
 
-Modules Description
+# Modules Description
 main.py: The entry point of the application. Initializes services, configures logging, and demonstrates usage in both manual and automated modes.
 
 config/
@@ -77,8 +77,8 @@ test_agent_service.py: Unit and integration tests for the AgentService.
 docs/
 
 README.md: Contains detailed documentation and usage instructions for the system.
-Installation
-Prerequisites
+# Installation
+# Prerequisites
 Python 3.8 or higher
 pip package manager
 Steps
@@ -111,10 +111,10 @@ OPENAI_API_KEY: Your OpenAI API key.
 LLAMA_API_KEY: Your Llama AI API key.
 Ensure that these variables are set in your environment or defined in a .env file in the project's root directory.
 
-Selection Modes
+# Selection Modes
 The Agentic System supports two selection modes for choosing tools:
 
-Manual Mode: Developers are presented with the metrics of each available tool and can manually select the desired tool.
+# Manual Mode: Developers are presented with the metrics of each available tool and can manually select the desired tool.
 Automated Mode: The system automatically selects the best tool based on predefined heuristics that consider cost, latency, quality, and CO₂ impact. The selection decision is logged for transparency.
 You can switch between modes by setting the selection mode in the AgentService:
 
@@ -127,7 +127,7 @@ To run the application and see both manual and automated tool selection in actio
 bash
 python main.py
 
-Example Output
+# Example Output
 === Manual Mode ===
 Tool: openai_gpt
   Cost: $0.03
@@ -146,7 +146,7 @@ Tool: llama
 Select a tool by typing its name: openai_gpt
 Manual Mode Response: [Model response]
 
-=== Automated Mode ===
+# Automated Mode 
 Automated selection: llama
 Automated Mode Response: [Model response]
 Integrating with Your Application
@@ -189,7 +189,7 @@ Architecture
 Modular Design
 The Agentic System is designed with a modular architecture, where each module encapsulates specific functionalities:
 
-Models: Define the data structures and enums used across the system.
+# Models: Define the data structures and enums used across the system.
 Services: Implement core functionalities such as metrics tracking, tool selection, and agent orchestration.
 Plugins: Provide integrations with external AI services like OpenAI and Llama.
 Config: Manage configurations and security aspects, ensuring sensitive information is handled securely.
@@ -198,7 +198,7 @@ Tests: Contain unit and integration tests to ensure system reliability and corre
 Plugin Architecture
 The system supports a plugin-based architecture, allowing for easy addition of new tools without modifying the core codebase. Each new tool should implement the ToolPlugin protocol, ensuring consistency and compatibility with the AgentService.
 
-Metrics Tracking
+# Metrics Tracking
 The MetricsService dynamically retrieves and manages metrics for each tool, enabling informed decision-making during tool selection. Metrics include:
 
 Cost: Estimated cost per request.
