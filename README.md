@@ -13,6 +13,7 @@ Manual and Automated Modes: Provide developers with the flexibility to choose to
 Robust Error Handling: Gracefully handle API failures and other potential errors to ensure system reliability.
 Secure Configuration: Safeguard API keys and sensitive information using environment variables and secure loading mechanisms.
 
+# File Structure
 agentic_system/
 ├── main.py
 ├── config/
@@ -43,6 +44,7 @@ agentic_system/
 │   └── test_agent_service.py
 └── docs/
     └── README.md
+
 
 
 # Modules Description
